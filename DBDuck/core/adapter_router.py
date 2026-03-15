@@ -5,6 +5,7 @@ from __future__ import annotations
 from urllib.parse import urlparse
 
 from ..adapters.mysql_adapter import MySQLAdapter
+from ..adapters.mssql_adapter import MSSQLAdapter
 from ..adapters.postgres_adapter import PostgresAdapter
 from ..adapters.sqlite_adapter import SQLiteAdapter
 from .exceptions import ConnectionError
@@ -16,6 +17,8 @@ class AdapterRouter:
     _sql_map = {
         "sqlite": SQLiteAdapter,
         "mysql": MySQLAdapter,
+        "mssql": MSSQLAdapter,
+        "sqlserver": MSSQLAdapter,
         "postgres": PostgresAdapter,
         "postgresql": PostgresAdapter,
     }
@@ -28,15 +31,19 @@ class AdapterRouter:
         if not scheme:
             return None
         dialect = scheme.split("+", 1)[0]
-        return "postgres" if dialect == "postgresql" else dialect
+        if dialect == "postgresql":
+            return "postgres"
+        if dialect in {"sqlserver", "mssql"}:
+            return "mssql"
+        return dialect
 
     @classmethod
     def route_sql_adapter(cls, db_instance: str | None, url: str | None):
-        resolved = (db_instance or "").lower().strip() or cls.infer_sql_instance_from_url(url)
+        inferred = cls.infer_sql_instance_from_url(url)
+        resolved = inferred or (db_instance or "").lower().strip()
         if not resolved:
             resolved = "sqlite"
         adapter_cls = cls._sql_map.get(resolved)
         if adapter_cls is None:
             raise ConnectionError(f"Unsupported SQL db_instance/url dialect: {db_instance or url}")
         return resolved, adapter_cls
-

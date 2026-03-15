@@ -1,0 +1,151 @@
+from __future__ import annotations
+
+from DBDuck import UDOM
+from DBDuck.models import (
+    Boolean,
+    Column,
+    ForeignKey,
+    Integer,
+    ManyToMany,
+    ManyToOne,
+    OneToMany,
+    OneToOne,
+    String,
+    UModel,
+)
+
+class Order(UModel):
+    class Meta:
+        db_table = "orders_django_style"
+
+    order_id = Column(Integer, primary_key=True)
+    customer = Column(String, nullable=False)
+    paid = Column(Boolean, default=False)
+
+
+class Customer(UModel):
+    class Meta:
+        db_table = "customers_django_style"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+
+
+class Invoice(UModel):
+    class Meta:
+        db_table = "invoices_django_style"
+
+    id = Column(Integer, primary_key=True)
+    customer_id = ForeignKey(Customer)
+    amount = Column(Integer, nullable=False)
+    customer = ManyToOne(Customer, fk_field="customer_id")
+
+
+class Profile(UModel):
+    class Meta:
+        db_table = "profiles_django_style"
+
+    id = Column(Integer, primary_key=True)
+    customer_id = ForeignKey(Customer)
+    bio = Column(String, nullable=False)
+
+
+class Tag(UModel):
+    class Meta:
+        db_table = "tags_django_style"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+
+
+class InvoiceTag(UModel):
+    class Meta:
+        db_table = "invoice_tags_django_style"
+
+    id = Column(Integer, primary_key=True)
+    invoice_id = Column(Integer, nullable=False)
+    tag_id = Column(Integer, nullable=False)
+
+
+Customer.profile = OneToOne(Profile, foreign_key="customer_id", local_key="id")
+Customer.invoices = OneToMany(Invoice, foreign_key="customer_id", local_key="id")
+Invoice.tags = ManyToMany(Tag, through=InvoiceTag, from_key="invoice_id", to_key="tag_id")
+
+
+def test_dbduck_models_django_style_sqlite_crud(tmp_path) -> None:
+    db_file = tmp_path / "dbduck_models_compat.db"
+    db = UDOM(db_type="sql", db_instance="sqlite", url=f"sqlite:///{db_file.as_posix()}")
+    Order.bind(db)
+
+    created = Order(order_id=1, customer="Alice").save()
+    assert created["rows_affected"] == 1
+
+    rows = Order.find(where={"customer": "Alice"}, limit=1)
+    assert len(rows) == 1
+    assert rows[0].paid is False
+
+    updated = rows[0].update(data={"paid": True}, where={"order_id": 1})
+    assert updated["rows_affected"] == 1
+
+    fetched = Order.find_one(where={"order_id": 1})
+    assert fetched is not None
+    assert fetched.customer == "Alice"
+    assert fetched.paid is True
+
+    deleted = fetched.delete(where={"order_id": 1})
+    assert deleted["rows_affected"] == 1
+
+
+def test_dbduck_models_foreign_key_accepts_model_instance(tmp_path) -> None:
+    db_file = tmp_path / "dbduck_models_fk.db"
+    db = UDOM(db_type="sql", db_instance="mysql", url=f"sqlite:///{db_file.as_posix()}")
+    Customer.bind(db)
+    Invoice.bind(db)
+
+    Customer(id=1, name="Alice").save()
+    alice = Customer.find_one(where={"id": 1})
+    assert alice is not None
+
+    created = Invoice(id=10, customer_id=alice, amount=500).save()
+    assert created["rows_affected"] == 1
+
+    rows = Invoice.find(where={"customer_id": 1}, limit=1)
+    assert len(rows) == 1
+    assert rows[0].amount == 500
+    assert rows[0].customer is not None
+    assert rows[0].customer.name == "Alice"
+
+
+def test_dbduck_models_relations_one_to_one_one_to_many_many_to_many(tmp_path) -> None:
+    db_file = tmp_path / "dbduck_models_relations.db"
+    db = UDOM(db_type="sql", db_instance="mysql", url=f"sqlite:///{db_file.as_posix()}")
+    Customer.bind(db)
+    Profile.bind(db)
+    Invoice.bind(db)
+    Tag.bind(db)
+    InvoiceTag.bind(db)
+
+    Customer(id=1, name="Alice").save()
+    Profile(id=11, customer_id=1, bio="First customer").save()
+    Invoice(id=100, customer_id=1, amount=250).save()
+    Invoice(id=101, customer_id=1, amount=350).save()
+    Tag(id=1, name="urgent").save()
+    Tag(id=2, name="paid").save()
+    InvoiceTag(id=1001, invoice_id=100, tag_id=1).save()
+    InvoiceTag(id=1002, invoice_id=100, tag_id=2).save()
+
+    alice = Customer.find_one(where={"id": 1})
+    assert alice is not None
+    assert alice.profile is not None
+    assert alice.profile.bio == "First customer"
+
+    invoices = alice.invoices
+    assert len(invoices) == 2
+    amounts = sorted(i.amount for i in invoices)
+    assert amounts == [250, 350]
+
+    inv = Invoice.find_one(where={"id": 100})
+    assert inv is not None
+    tags = inv.tags
+    assert len(tags) == 2
+    assert sorted(t.name for t in tags) == ["paid", "urgent"]

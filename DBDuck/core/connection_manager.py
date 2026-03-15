@@ -44,17 +44,25 @@ class ConnectionManager:
         return cls._instance
 
     @staticmethod
+    def normalize_url(url: str) -> str:
+        """Normalize known driver aliases/typos in SQLAlchemy URLs."""
+        if not isinstance(url, str):
+            return url
+        return url.replace("mysql+pymsql://", "mysql+pymysql://")
+
+    @staticmethod
     def parse_url(url: str) -> ParsedDatabaseURL:
         """Parse and normalize SQLAlchemy-style database URL."""
         if not isinstance(url, str) or not url.strip():
             raise ConnectionError("Database URL must be a non-empty string")
-        parsed = urlparse(url)
+        normalized_url = ConnectionManager.normalize_url(url)
+        parsed = urlparse(normalized_url)
         if not parsed.scheme:
             raise ConnectionError(f"Invalid database URL: {url!r}")
         dialect = parsed.scheme.split("+", 1)[0].lower()
         database = parsed.path.lstrip("/") if parsed.path else None
         return ParsedDatabaseURL(
-            raw_url=url,
+            raw_url=normalized_url,
             dialect=dialect,
             host=parsed.hostname,
             port=parsed.port,
@@ -73,6 +81,7 @@ class ConnectionManager:
         echo: bool = False,
     ) -> Engine:
         """Get or build an Engine for the URL with pooling."""
+        url = self.normalize_url(url)
         with self._lock:
             engine = self._engines.get(url)
             if engine is not None:
@@ -114,3 +123,23 @@ class ConnectionManager:
             session = scoped_session(factory)
             self._sessions[url] = session
             return session
+
+    def dispose_engine(self, url: str) -> None:
+        """Dispose one cached engine and remove associated session factory."""
+        with self._lock:
+            session = self._sessions.pop(url, None)
+            if session is not None:
+                session.remove()
+            engine = self._engines.pop(url, None)
+            if engine is not None:
+                engine.dispose()
+
+    def dispose_all(self) -> None:
+        """Dispose all cached engines and sessions."""
+        with self._lock:
+            for session in self._sessions.values():
+                session.remove()
+            self._sessions.clear()
+            for engine in self._engines.values():
+                engine.dispose()
+            self._engines.clear()

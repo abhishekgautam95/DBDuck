@@ -1,7 +1,7 @@
 # SQL
 sqlalchemy
 pymysql
-psycopg2
+psycopg2-binary
 pyodbc
 
 # NoSQL
@@ -19,3 +19,4 @@ pyTigerGraph
 
 # Security/util
 cryptography
+bcrypt

@@ -5,6 +5,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, Mapping
 
+from .exceptions import QueryError
+
 
 class BaseAdapter(ABC):
     """Common adapter contract for UDOM routing."""
@@ -38,3 +40,38 @@ class BaseAdapter(ABC):
     @abstractmethod
     def delete(self, entity: str, where: Mapping[str, Any] | str) -> Any:
         """Delete records/documents from an entity."""
+
+    @abstractmethod
+    def update(self, entity: str, data: Mapping[str, Any], where: Mapping[str, Any] | str) -> Any:
+        """Update records/documents for an entity."""
+
+    @abstractmethod
+    def count(self, entity: str, where: Mapping[str, Any] | str | None = None) -> int:
+        """Count records/documents for an entity."""
+
+    def aggregate(
+        self,
+        entity: str,
+        *,
+        group_by: str | list[str] | tuple[str, ...] | None = None,
+        metrics: Mapping[str, Any] | None = None,
+        where: Mapping[str, Any] | str | None = None,
+        having: Mapping[str, Any] | str | None = None,
+        order_by: str | None = None,
+        limit: int | None = None,
+        pipeline: list[Mapping[str, Any]] | None = None,
+    ) -> Any:
+        """Aggregate records/documents for an entity."""
+        raise QueryError("aggregate is not supported by this adapter")
+
+    def ping(self) -> Any:
+        """Optional health check for adapter connection."""
+        raise NotImplementedError
+
+    def close(self) -> None:
+        """Optional cleanup hook for adapter resources."""
+        return None
+
+    def ensure_indexes(self, entity: str, indexes: list[Mapping[str, Any]]) -> Any:
+        """Optional index creation hook."""
+        raise NotImplementedError

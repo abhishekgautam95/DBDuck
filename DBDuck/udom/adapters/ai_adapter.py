@@ -49,3 +49,13 @@ class AIAdapter(BaseAdapter):
 
     def delete(self, entity: str, where: Mapping[str, Any] | str) -> Any:
         return self.run_native({"action": "delete", "entity": entity, "where": where})
+
+    def update(self, entity: str, data: Mapping[str, Any], where: Mapping[str, Any] | str) -> Any:
+        return self.run_native({"action": "update", "entity": entity, "data": dict(data), "where": where})
+
+    def count(self, entity: str, where: Mapping[str, Any] | str | None = None) -> int:
+        self.run_native({"action": "count", "entity": entity, "where": where})
+        return 0
+
+    def ping(self) -> Any:
+        return {"ok": 1, "db_type": "ai", "db_instance": self.db_instance}

@@ -49,3 +49,21 @@ def log_event(
 ) -> None:
     """Emit a structured log event with standard keys."""
     logger.log(level, message, extra={"event": event, "db": db, "entity": entity, **fields})
+
+
+def log_internal_debug(
+    logger: logging.Logger,
+    message: str,
+    *,
+    event: str,
+    db: str = "-",
+    entity: str = "-",
+    exc: Exception | None = None,
+    **fields: Any,
+) -> None:
+    """Emit DEBUG-only internal diagnostics without exposing them in normal INFO logs."""
+    logger.debug(
+        message,
+        exc_info=exc if exc is not None else False,
+        extra={"event": event, "db": db, "entity": entity, **fields},
+    )

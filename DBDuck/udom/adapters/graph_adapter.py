@@ -64,6 +64,21 @@ class GraphAdapter(BaseAdapter):
             raise QueryError("delete requires a non-empty where condition")
         return self.run_native(self.convert_uql(f"DELETE {entity} WHERE {where_clause}"))
 
+    def update(self, entity: str, data: Mapping[str, Any], where: Mapping[str, Any] | str) -> Any:
+        if not data:
+            raise QueryError("update data must be non-empty")
+        where_clause = self._normalize_where(where)
+        if not where_clause:
+            raise QueryError("update requires where")
+        set_clause = ", ".join([f"n.{k} = {self._to_uql_value(v)}" for k, v in data.items()])
+        return self.run_native(f"MATCH (n:{entity}) WHERE {where_clause} SET {set_clause} RETURN n;")
+
+    def count(self, entity: str, where: Mapping[str, Any] | str | None = None) -> int:
+        where_clause = self._normalize_where(where)
+        query = f"MATCH (n:{entity}) " + (f"WHERE {where_clause} " if where_clause else "") + "RETURN count(n) AS total;"
+        self.run_native(query)
+        return 0
+
     @staticmethod
     def _to_uql_value(value: Any) -> str:
         if isinstance(value, bool):
@@ -138,3 +153,6 @@ class GraphAdapter(BaseAdapter):
                 normalized = val.strip(chr(39)).strip(chr(34))
                 props[key] = f'"{normalized}"'
         return "{" + ", ".join([f"{k}: {v}" for k, v in props.items()]) + "}"
+
+    def ping(self) -> Any:
+        return {"ok": 1, "db_type": "graph", "db_instance": self.db_instance}

@@ -1,6 +1,6 @@
 ﻿# DBDuck Initialization Guide
 
-This guide is for the initial stage of DBDuck with SQL and NoSQL support.
+This guide is for the current production-focused stage of DBDuck with SQL and NoSQL support.
 
 ## 1. Environment
 
@@ -44,15 +44,12 @@ db = UDOM(db_type="sql", db_instance="mysql", url="mysql+pymysql://root:password
 db = UDOM(db_type="sql", db_instance="postgres", url="postgresql+psycopg2://postgres:password@localhost:5432/postgres")
 ```
 
-### MSSQL
+### Supported SQL engines in current workspace
 
-```python
-from urllib.parse import quote_plus
-
-odbc = "DRIVER={ODBC Driver 17 for SQL Server};SERVER=HOST\\INSTANCE;DATABASE=udom;Trusted_Connection=yes;"
-url = "mssql+pyodbc:///?odbc_connect=" + quote_plus(odbc)
-db = UDOM(db_type="sql", db_instance="mssql", url=url)
-```
+- `sqlite`
+- `mysql`
+- `postgres`
+- `mssql`
 
 ## 4. NoSQL Initialization (MongoDB)
 
@@ -63,12 +60,33 @@ print(db.create("events", {"type": "login", "ok": True}))
 print(db.find("events", where={"ok": True}))
 ```
 
+### Mongo Transactions
+
+```python
+with db.transaction():
+    db.create("events", {"type": "purchase", "ok": True, "amount": 120.50})
+```
+
+### Mongo Index Management
+
+```python
+db.ensure_indexes(
+    "events",
+    [
+        {"fields": [{"name": "type", "order": "asc"}], "options": {"name": "idx_type"}},
+    ],
+)
+```
+
 ## 5. Validation Commands
 
 ```bash
 python -m py_compile DBDuck/udom/udom.py
+python examples/app_production.py
 python examples/example_sqlite.py
 python examples/example_mongo.py
+python -m examples.dbs.sqlite.basic
+python -m examples.dbs.sqlite.advanced
 ```
 
 ## 6. Current Scope
@@ -76,7 +94,51 @@ python examples/example_mongo.py
 - Production focus: SQL + MongoDB
 - In progress: Graph + AI + Vector
 
-## 7. Logo Asset
+## 7. CI Test Pipeline
+
+GitHub Actions workflow:
+
+- `.github/workflows/ci.yml`
+
+Local equivalent:
+
+```bash
+pytest -q
+```
+
+Security checks:
+
+```bash
+pip-audit --desc
+bandit -q -r DBDuck
+```
+
+## 8. Runtime Config
+
+Use `.env.example` as baseline for production environment variables.
+
+Important secure default:
+
+- `DBDUCK_ALLOW_UNSAFE_WHERE_STRINGS=false`
+
+## 9. SQL Migrations
+
+Use Alembic baseline in `migrations/sql/`:
+
+```bash
+alembic -c migrations/sql/alembic.ini revision -m "init"
+alembic -c migrations/sql/alembic.ini upgrade head
+```
+
+## 10. Mongo Integration Tests
+
+```bash
+$env:RUN_MONGO_INTEGRATION="1"
+$env:MONGO_TEST_URL="mongodb://localhost:27017/udom_test"
+pytest -q tests/integration
+```
+
+## 11. Logo Asset
 
 Expected logo location:
 
