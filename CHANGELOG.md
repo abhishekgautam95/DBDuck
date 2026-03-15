@@ -24,6 +24,7 @@
 - Automatic BCrypt hashing for sensitive fields on SQL and Mongo write paths.
 - `verify_secret(...)` helper for validating plaintext secrets against stored BCrypt hashes.
 - Model-level sensitive field hashing via `UModel.__sensitive_fields__`.
+- Model-level `datetime`, `date`, and `time` coercion/serialization in `UModel`.
 - Security audit log persistence to `security_logs`.
 - In-memory rate limiting controls for UDOM operations.
 - Native SQL and Mongo pagination support for `find_page()`.
@@ -41,6 +42,8 @@
 - Mongo where-clause parsing supports safe operators and order/limit handling.
 - SQL and Mongo execution paths now mask raw driver/database errors from callers.
 - Structured logs no longer expose raw SQL values or sensitive parameters in standard output.
+- Legacy SQL adapter UQL conversion now parameterizes `WHERE` literals and insert values via bound params.
+- Legacy SQL adapters now share one common parameterization helper to keep behavior aligned.
 
 ### Tests
 
@@ -53,4 +56,6 @@
   - BCrypt hashing and secret verification
   - audit logs and rate limiting
   - model-level sensitive field behavior
+  - model-level date/time round-trip behavior
+  - legacy SQL adapter parameterization
   - opt-in real backend integration scaffolding

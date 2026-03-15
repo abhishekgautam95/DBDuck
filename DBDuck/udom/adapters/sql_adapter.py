@@ -1,16 +1,9 @@
 import re
-from typing import Any
 
 from sqlalchemy import create_engine, text
 
 from .base_adapter import BaseAdapter
-
-
-class ParameterizedSQL(str):
-    def __new__(cls, sql: str, params: dict[str, Any] | None = None):
-        obj = super().__new__(cls, sql)
-        obj.params = params or {}
-        return obj
+from .sql._legacy_sql_common import ParameterizedSQL, literal_to_uql, parameterize_condition, parse_literal_value
 
 
 class SQLAdapter(BaseAdapter):
@@ -240,39 +233,10 @@ class SQLAdapter(BaseAdapter):
 
     @staticmethod
     def _literal_to_uql(value):
-        if isinstance(value, bool):
-            return "true" if value else "false"
-        if value is None:
-            return "null"
-        if isinstance(value, (int, float)):
-            return str(value)
-        return "'" + str(value).replace("'", "''") + "'"
+        return literal_to_uql(value)
 
     def _parameterize_condition(self, condition):
-        condition = self._normalize_condition(condition)
-        if not condition:
-            return "", {}
-        tokens = re.split(r"\s+(AND|OR)\s+", condition, flags=re.IGNORECASE)
-        clauses = []
-        params = {}
-        value_index = 0
-        for token in tokens:
-            piece = token.strip()
-            if not piece:
-                continue
-            upper = piece.upper()
-            if upper in {"AND", "OR"}:
-                clauses.append(upper)
-                continue
-            match = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)\s*(=|!=|>=|<=|>|<)\s*(.+)", piece)
-            if not match:
-                raise ValueError("Unsupported legacy WHERE clause")
-            field, op, raw = match.group(1), match.group(2), match.group(3)
-            pname = f"w_{value_index}"
-            value_index += 1
-            clauses.append(f"{self._quote(field)} {op} :{pname}")
-            params[pname] = self._parse_literal_value(raw)
-        return " ".join(clauses), params
+        return parameterize_condition(condition, quote_identifier=self._quote, normalize_condition=self._normalize_condition)
 
     def _normalize_condition(self, condition):
         if not condition:
@@ -300,16 +264,4 @@ class SQLAdapter(BaseAdapter):
 
     @staticmethod
     def _parse_literal_value(raw):
-        value = str(raw).strip()
-        if (value.startswith("'") and value.endswith("'")) or (value.startswith('"') and value.endswith('"')):
-            return value[1:-1]
-        lowered = value.lower()
-        if lowered == "true":
-            return True
-        if lowered == "false":
-            return False
-        if re.fullmatch(r"-?\d+", value):
-            return int(value)
-        if re.fullmatch(r"-?\d+(?:\.\d+)?", value):
-            return float(value)
-        return value
+        return parse_literal_value(raw)

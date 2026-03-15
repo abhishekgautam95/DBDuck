@@ -113,6 +113,21 @@ class Member(UModel):
     pin: str
 ```
 
+Model-level date/time coercion:
+
+```python
+from datetime import date, datetime, time
+from DBDuck.models import UModel
+
+class CalendarEvent(UModel):
+    title: str
+    starts_at: datetime
+    event_date: date
+    reminder_at: time | None
+```
+
+`UModel` now accepts typed Python temporal values or ISO strings and round-trips them as `datetime`, `date`, and `time`.
+
 ## Core API
 
 - `create(entity, data)`
@@ -185,8 +200,10 @@ Design highlights:
 - Added health/lifecycle methods: `ping()` and `close()`.
 - Added `verify_secret(...)` for BCrypt password/secret verification.
 - Added `UModel.__sensitive_fields__` for model-level sensitive field hashing.
+- Added `UModel` support for `datetime`, `date`, and `time` annotations with ISO serialization and typed round-tripping.
 - Added real backend integration test scaffolding for `MySQL`, `PostgreSQL`, `SQL Server`, and `MongoDB`.
 - Added native backend pagination support for SQL and Mongo-backed `find_page()`.
+- Refactored legacy SQL adapter paths to parameterize `CREATE`/`FIND`/`DELETE` values instead of embedding them into SQL strings.
 - Added test coverage for routing, transactions, validation, error handling, hashing, audit logs, rate limiting, and integration scaffolding.
 
 ## CI/CD (Tests)
