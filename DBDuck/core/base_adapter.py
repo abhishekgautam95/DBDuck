@@ -75,3 +75,42 @@ class BaseAdapter(ABC):
     def ensure_indexes(self, entity: str, indexes: list[Mapping[str, Any]]) -> Any:
         """Optional index creation hook."""
         raise NotImplementedError
+
+    def create_view(self, name: str, select_query: str, *, replace: bool = False) -> Any:
+        raise QueryError("views are not supported by this adapter")
+
+    def drop_view(self, name: str, *, if_exists: bool = True) -> Any:
+        raise QueryError("views are not supported by this adapter")
+
+    def create_procedure(self, name: str, definition: str, *, replace: bool = False) -> Any:
+        raise QueryError("stored procedures are not supported by this adapter")
+
+    def drop_procedure(self, name: str, *, if_exists: bool = True) -> Any:
+        raise QueryError("stored procedures are not supported by this adapter")
+
+    def call_procedure(self, name: str, params: list[Any] | tuple[Any, ...] | None = None) -> Any:
+        raise QueryError("stored procedures are not supported by this adapter")
+
+    def create_function(self, name: str, definition: str, *, replace: bool = False) -> Any:
+        raise QueryError("functions are not supported by this adapter")
+
+    def drop_function(self, name: str, *, if_exists: bool = True) -> Any:
+        raise QueryError("functions are not supported by this adapter")
+
+    def call_function(self, name: str, params: list[Any] | tuple[Any, ...] | None = None) -> Any:
+        raise QueryError("functions are not supported by this adapter")
+
+    def create_event(
+        self,
+        name: str,
+        schedule: str,
+        body: str,
+        *,
+        replace: bool = False,
+        preserve: bool = True,
+        enable: bool = True,
+    ) -> Any:
+        raise QueryError("events are not supported by this adapter")
+
+    def drop_event(self, name: str, *, if_exists: bool = True) -> Any:
+        raise QueryError("events are not supported by this adapter")

@@ -791,3 +791,118 @@ class SQLAlchemyAdapter(BaseAdapter):
 
     def close(self) -> None:
         self._conn_manager.dispose_engine(self.url)
+
+    def create_view(self, name: str, select_query: str, *, replace: bool = False) -> Any:
+        view_name = self._validate_identifier(name)
+        if not isinstance(select_query, str) or not select_query.strip():
+            raise QueryError("select_query must be a non-empty SQL string")
+        select_sql = select_query.strip()
+        if not re.match(r"^(SELECT|WITH)\b", select_sql, flags=re.IGNORECASE):
+            raise QueryError("view definition must start with SELECT or WITH")
+        if replace:
+            self.drop_view(view_name, if_exists=True)
+        sql = f"CREATE VIEW {self._quote(view_name)} AS {select_sql}"  # nosec B608
+        return self.run_native(sql)
+
+    def drop_view(self, name: str, *, if_exists: bool = True) -> Any:
+        view_name = self._validate_identifier(name)
+        sql = f"DROP VIEW {'IF EXISTS ' if if_exists else ''}{self._quote(view_name)}"  # nosec B608
+        return self.run_native(sql)
+
+    def create_procedure(self, name: str, definition: str, *, replace: bool = False) -> Any:
+        proc_name = self._validate_identifier(name)
+        if self.DIALECT == "sqlite":
+            raise QueryError("stored procedures are not supported for sqlite")
+        if not isinstance(definition, str) or not definition.strip():
+            raise QueryError("definition must be a non-empty SQL string")
+        if replace:
+            self.drop_procedure(proc_name, if_exists=True)
+        keyword = "CREATE OR REPLACE PROCEDURE" if self.DIALECT == "postgres" else "CREATE PROCEDURE"
+        sql = f"{keyword} {self._quote(proc_name)} {definition.strip()}"  # nosec B608
+        return self.run_native(sql)
+
+    def drop_procedure(self, name: str, *, if_exists: bool = True) -> Any:
+        proc_name = self._validate_identifier(name)
+        if self.DIALECT == "sqlite":
+            raise QueryError("stored procedures are not supported for sqlite")
+        sql = f"DROP PROCEDURE {'IF EXISTS ' if if_exists else ''}{self._quote(proc_name)}"  # nosec B608
+        return self.run_native(sql)
+
+    def call_procedure(self, name: str, params: list[Any] | tuple[Any, ...] | None = None) -> Any:
+        proc_name = self._validate_identifier(name)
+        if self.DIALECT == "sqlite":
+            raise QueryError("stored procedures are not supported for sqlite")
+        values = list(params or [])
+        placeholder_sql = ", ".join(f":p_{idx}" for idx in range(len(values)))
+        bound = {f"p_{idx}": value for idx, value in enumerate(values)}
+        keyword = "EXEC" if self.DIALECT == "mssql" else "CALL"
+        sql = f"{keyword} {self._quote(proc_name)}"
+        if placeholder_sql:
+            sql += f" {placeholder_sql}" if self.DIALECT == "mssql" else f"({placeholder_sql})"
+        return self.run_native(sql, params=bound)
+
+    def create_function(self, name: str, definition: str, *, replace: bool = False) -> Any:
+        func_name = self._validate_identifier(name)
+        if self.DIALECT == "sqlite":
+            raise QueryError("function creation is not supported for sqlite")
+        if not isinstance(definition, str) or not definition.strip():
+            raise QueryError("definition must be a non-empty SQL string")
+        if replace:
+            self.drop_function(func_name, if_exists=True)
+        keyword = "CREATE OR REPLACE FUNCTION" if self.DIALECT == "postgres" else "CREATE FUNCTION"
+        sql = f"{keyword} {self._quote(func_name)} {definition.strip()}"  # nosec B608
+        return self.run_native(sql)
+
+    def drop_function(self, name: str, *, if_exists: bool = True) -> Any:
+        func_name = self._validate_identifier(name)
+        if self.DIALECT == "sqlite":
+            raise QueryError("function dropping is not supported for sqlite")
+        sql = f"DROP FUNCTION {'IF EXISTS ' if if_exists else ''}{self._quote(func_name)}"  # nosec B608
+        return self.run_native(sql)
+
+    def call_function(self, name: str, params: list[Any] | tuple[Any, ...] | None = None) -> Any:
+        func_name = self._validate_identifier(name)
+        values = list(params or [])
+        bindings = [bindparam(f"p_{idx}", value=value) for idx, value in enumerate(values)]
+        stmt = select(getattr(func, func_name)(*bindings).label("result"))
+        rows = self.run_native(stmt)
+        if not rows:
+            return None
+        return rows[0].get("result")
+
+    def create_event(
+        self,
+        name: str,
+        schedule: str,
+        body: str,
+        *,
+        replace: bool = False,
+        preserve: bool = True,
+        enable: bool = True,
+    ) -> Any:
+        event_name = self._validate_identifier(name)
+        if self.DIALECT != "mysql":
+            raise QueryError("database events are currently supported only for mysql")
+        if not isinstance(schedule, str) or not schedule.strip():
+            raise QueryError("schedule must be a non-empty SQL fragment")
+        if not isinstance(body, str) or not body.strip():
+            raise QueryError("body must be a non-empty SQL fragment")
+        if replace:
+            self.drop_event(event_name, if_exists=True)
+        preserve_sql = "ON COMPLETION PRESERVE" if preserve else "ON COMPLETION NOT PRESERVE"
+        status_sql = "ENABLE" if enable else "DISABLE"
+        sql = (
+            f"CREATE EVENT {self._quote(event_name)} "
+            f"ON SCHEDULE {schedule.strip()} "
+            f"{preserve_sql} "
+            f"{status_sql} "
+            f"DO {body.strip()}"
+        )  # nosec B608
+        return self.run_native(sql)
+
+    def drop_event(self, name: str, *, if_exists: bool = True) -> Any:
+        event_name = self._validate_identifier(name)
+        if self.DIALECT != "mysql":
+            raise QueryError("database events are currently supported only for mysql")
+        sql = f"DROP EVENT {'IF EXISTS ' if if_exists else ''}{self._quote(event_name)}"  # nosec B608
+        return self.run_native(sql)

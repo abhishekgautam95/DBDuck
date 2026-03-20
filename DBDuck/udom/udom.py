@@ -418,6 +418,82 @@ class UDOM:
             raise QueryError("Current adapter does not support ensure_indexes")
         return self.adapter.ensure_indexes(entity_name, indexes)
 
+    def create_view(self, name: str, select_query: str, *, replace: bool = False) -> Any:
+        view_name = SchemaValidator.validate_entity(self._normalize_entity(name))
+        if self.db_type != "sql":
+            raise QueryError("create_view is currently supported for SQL adapters only")
+        return self.adapter.create_view(view_name, select_query, replace=replace)
+
+    def drop_view(self, name: str, *, if_exists: bool = True) -> Any:
+        view_name = SchemaValidator.validate_entity(self._normalize_entity(name))
+        if self.db_type != "sql":
+            raise QueryError("drop_view is currently supported for SQL adapters only")
+        return self.adapter.drop_view(view_name, if_exists=if_exists)
+
+    def create_procedure(self, name: str, definition: str, *, replace: bool = False) -> Any:
+        proc_name = SchemaValidator.validate_entity(self._normalize_entity(name))
+        if self.db_type != "sql":
+            raise QueryError("create_procedure is currently supported for SQL adapters only")
+        return self.adapter.create_procedure(proc_name, definition, replace=replace)
+
+    def drop_procedure(self, name: str, *, if_exists: bool = True) -> Any:
+        proc_name = SchemaValidator.validate_entity(self._normalize_entity(name))
+        if self.db_type != "sql":
+            raise QueryError("drop_procedure is currently supported for SQL adapters only")
+        return self.adapter.drop_procedure(proc_name, if_exists=if_exists)
+
+    def call_procedure(self, name: str, params: list[Any] | tuple[Any, ...] | None = None) -> Any:
+        proc_name = SchemaValidator.validate_entity(self._normalize_entity(name))
+        if self.db_type != "sql":
+            raise QueryError("call_procedure is currently supported for SQL adapters only")
+        return self.adapter.call_procedure(proc_name, params=params)
+
+    def create_function(self, name: str, definition: str, *, replace: bool = False) -> Any:
+        func_name = SchemaValidator.validate_entity(self._normalize_entity(name))
+        if self.db_type != "sql":
+            raise QueryError("create_function is currently supported for SQL adapters only")
+        return self.adapter.create_function(func_name, definition, replace=replace)
+
+    def drop_function(self, name: str, *, if_exists: bool = True) -> Any:
+        func_name = SchemaValidator.validate_entity(self._normalize_entity(name))
+        if self.db_type != "sql":
+            raise QueryError("drop_function is currently supported for SQL adapters only")
+        return self.adapter.drop_function(func_name, if_exists=if_exists)
+
+    def call_function(self, name: str, params: list[Any] | tuple[Any, ...] | None = None) -> Any:
+        func_name = SchemaValidator.validate_entity(self._normalize_entity(name))
+        if self.db_type != "sql":
+            raise QueryError("call_function is currently supported for SQL adapters only")
+        return self.adapter.call_function(func_name, params=params)
+
+    def create_event(
+        self,
+        name: str,
+        schedule: str,
+        body: str,
+        *,
+        replace: bool = False,
+        preserve: bool = True,
+        enable: bool = True,
+    ) -> Any:
+        event_name = SchemaValidator.validate_entity(self._normalize_entity(name))
+        if self.db_type != "sql":
+            raise QueryError("create_event is currently supported for SQL adapters only")
+        return self.adapter.create_event(
+            event_name,
+            schedule,
+            body,
+            replace=replace,
+            preserve=preserve,
+            enable=enable,
+        )
+
+    def drop_event(self, name: str, *, if_exists: bool = True) -> Any:
+        event_name = SchemaValidator.validate_entity(self._normalize_entity(name))
+        if self.db_type != "sql":
+            raise QueryError("drop_event is currently supported for SQL adapters only")
+        return self.adapter.drop_event(event_name, if_exists=if_exists)
+
     def verify_secret(self, plain_value: Any, stored_hash: Any) -> bool:
         """Validate plaintext secret against a stored BCrypt hash."""
         return SensitiveFieldProtector.verify_secret(plain_value, stored_hash)
