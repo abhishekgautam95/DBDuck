@@ -2,6 +2,8 @@
 
 from sqlalchemy import create_engine, text
 
+from ....core.exceptions import QueryError
+from ....utils.logger import get_logger, log_internal_debug
 from ..base_adapter import BaseAdapter
 from ._legacy_sql_common import ParameterizedSQL, parameterize_condition, parse_literal_value
 
@@ -9,6 +11,7 @@ class BaseSQLAdapter(BaseAdapter):
     def __init__(self, url):
         self.url = url
         self.engine = create_engine(url)
+        self._logger = get_logger()
 
     # ---------- SQL runner ----------
     def run_native(self, query, params=None):
@@ -22,7 +25,14 @@ class BaseSQLAdapter(BaseAdapter):
                 except Exception:
                     return "Query executed successfully."
             except Exception as e:
-                return f"SQL Error: {str(e)}"
+                log_internal_debug(
+                    self._logger,
+                    "Legacy BaseSQLAdapter execution failed",
+                    event="query.error.internal",
+                    db="legacy-sql",
+                    exc=e,
+                )
+                raise QueryError("Database execution failed") from e
 
     # ---------- Universal UQL â†’ SQL ----------
     def convert_uql(self, uql):

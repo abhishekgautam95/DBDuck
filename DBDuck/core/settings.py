@@ -43,8 +43,6 @@ class RuntimeSettings:
     mongo_min_pool_size: int = 0
     mongo_retry_attempts: int = 3
     mongo_retry_backoff_ms: int = 100
-    # Default is secure mode. Caller must explicitly opt in if needed.
-    allow_unsafe_where_strings: bool = False
     hash_sensitive_fields: bool = True
     bcrypt_rounds: int = 12
     security_audit_enabled: bool = True
@@ -68,7 +66,6 @@ class RuntimeSettings:
             "min_pool_size": self.mongo_min_pool_size,
             "retry_attempts": self.mongo_retry_attempts,
             "retry_backoff_ms": self.mongo_retry_backoff_ms,
-            "allow_unsafe_where_strings": self.allow_unsafe_where_strings,
             "hash_sensitive_fields": self.hash_sensitive_fields,
             "bcrypt_rounds": self.bcrypt_rounds,
             "security_audit_enabled": self.security_audit_enabled,
@@ -102,10 +99,6 @@ def load_runtime_settings(**overrides: Any) -> RuntimeSettings:
         mongo_retry_attempts=_to_int(overrides.get("retry_attempts", env.get("DBDUCK_MONGO_RETRY_ATTEMPTS")), 3),
         mongo_retry_backoff_ms=_to_int(
             overrides.get("retry_backoff_ms", env.get("DBDUCK_MONGO_RETRY_BACKOFF_MS")), 100
-        ),
-        allow_unsafe_where_strings=_to_bool(
-            overrides.get("allow_unsafe_where_strings", env.get("DBDUCK_ALLOW_UNSAFE_WHERE_STRINGS")),
-            default=False,
         ),
         hash_sensitive_fields=_to_bool(
             overrides.get("hash_sensitive_fields", env.get("DBDUCK_HASH_SENSITIVE_FIELDS")),

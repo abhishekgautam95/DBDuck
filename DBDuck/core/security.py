@@ -69,7 +69,7 @@ class SensitiveFieldProtector:
 
     @staticmethod
     def _looks_like_bcrypt_hash(value: bytes) -> bool:
-        return value.startswith((b"$2a$", b"$2b$", b"$2y$"))
+        return len(value) == 60 and value.startswith((b"$2a$", b"$2b$", b"$2y$"))
 
     @classmethod
     def verify_secret(cls, plain_value: Any, stored_hash: Any) -> bool:

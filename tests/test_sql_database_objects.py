@@ -8,7 +8,7 @@ from DBDuck.core.exceptions import QueryError
 
 def test_sqlite_create_view_and_query_it(tmp_path) -> None:
     db_file = tmp_path / "sql_objects.db"
-    db = UDOM(db_type="sql", db_instance="sqlite", url=f"sqlite:///{db_file.as_posix()}")
+    db = UDOM(db_type="sql", db_instance="sqlite", url=f"sqlite:///{db_file.as_posix()}", admin_mode=True)
 
     db.create_many(
         "Orders",
@@ -31,14 +31,14 @@ def test_sqlite_create_view_and_query_it(tmp_path) -> None:
 
 def test_sqlite_call_function_returns_scalar(tmp_path) -> None:
     db_file = tmp_path / "sql_functions.db"
-    db = UDOM(db_type="sql", db_instance="sqlite", url=f"sqlite:///{db_file.as_posix()}")
+    db = UDOM(db_type="sql", db_instance="sqlite", url=f"sqlite:///{db_file.as_posix()}", admin_mode=True)
 
     assert db.call_function("abs", [-5]) == 5
 
 
 def test_sqlite_procedure_function_and_event_management_are_explicitly_unsupported(tmp_path) -> None:
     db_file = tmp_path / "sql_unsupported_objects.db"
-    db = UDOM(db_type="sql", db_instance="sqlite", url=f"sqlite:///{db_file.as_posix()}")
+    db = UDOM(db_type="sql", db_instance="sqlite", url=f"sqlite:///{db_file.as_posix()}", admin_mode=True)
 
     with pytest.raises(QueryError, match="stored procedures are not supported for sqlite"):
         db.create_procedure("sync_orders", "() BEGIN SELECT 1; END", replace=True)

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import threading
+import re
 from typing import Any, Iterator, Mapping
 
 from ..core import (
@@ -35,6 +36,7 @@ from .utils.validator import UQLValidator
 class UDOM:
     """Universal Data Object Model across multiple backend categories."""
 
+    _MAX_PAGE = 10_000
     _SUPPORTED_DB_TYPES = {"sql", "nosql", "graph", "ai", "vector"}
     _SQL_ENGINES = {"sqlite", "mysql", "postgres", "postgresql", "mssql", "sqlserver"}
     _NOSQL_ENGINES = {"mongodb", "mongo", "redis", "dynamodb", "firestore", "cassandra"}
@@ -141,24 +143,29 @@ class UDOM:
         return entity.strip()
 
     def query(self, query: str) -> Any:
-        self._enforce_rate_limit("query", entity="-")
+        self._enforce_rate_limit("query", entity="-", caller_id=self._current_caller_id())
         return self.adapter.run_native(query)
 
     def execute(self, query: str) -> Any:
-        self._enforce_rate_limit("execute", entity="-")
+        self._enforce_rate_limit("execute", entity="-", caller_id=self._current_caller_id())
         return self.adapter.run_native(query)
 
     def uquery(self, uql: str) -> str:
         return self.adapter.convert_uql(uql)
 
     def uexecute(self, uql: str) -> Any:
-        self._enforce_rate_limit("uexecute", entity="-")
+        self._enforce_rate_limit("uexecute", entity="-", caller_id=self._current_caller_id())
         valid = self.validator.validate(uql)
         if not valid.get("valid"):
             error = QueryError(valid.get("error", "Invalid UQL"))
             self._audit_security_error("uexecute", "-", uql, error)
             raise error
         native_query = self.adapter.convert_uql(uql)
+        if isinstance(native_query, tuple) and len(native_query) == 2:
+            query, params = native_query
+            if not isinstance(params, Mapping):
+                raise QueryError("Invalid converted UQL parameters")
+            return self.adapter.run_native(query, params=params)
         return self.adapter.run_native(native_query)
 
     def create(self, entity: str, data: Mapping[str, Any]) -> Any:
@@ -173,7 +180,7 @@ class UDOM:
         *,
         sensitive_fields: set[str] | None,
     ) -> Any:
-        self._enforce_rate_limit("create", entity=entity_name)
+        self._enforce_rate_limit("create", entity=entity_name, caller_id=self._current_caller_id())
         payload = self._protect_sensitive_payload(payload, field_names=sensitive_fields)
         if self.db_type in {"sql", "nosql"}:
             log_event(self.logger, 20, "Create request", event="query.create", db=self.db_instance, entity=entity_name)
@@ -198,7 +205,7 @@ class UDOM:
         *,
         sensitive_fields: set[str] | None,
     ) -> Any:
-        self._enforce_rate_limit("create_many", entity=entity_name)
+        self._enforce_rate_limit("create_many", entity=entity_name, caller_id=self._current_caller_id())
         if self.db_type in {"sql", "nosql"}:
             payloads = [
                 self._protect_sensitive_payload(SchemaValidator.validate_create_data(row), field_names=sensitive_fields)
@@ -222,7 +229,7 @@ class UDOM:
         limit: int | None = None,
     ) -> Any:
         entity_name = SchemaValidator.validate_entity(self._normalize_entity(entity))
-        self._enforce_rate_limit("find", entity=entity_name)
+        self._enforce_rate_limit("find", entity=entity_name, caller_id=self._current_caller_id())
         try:
             where = SchemaValidator.validate_find_where(where)
         except QueryError as exc:
@@ -239,7 +246,7 @@ class UDOM:
 
     def delete(self, entity: str, where: Mapping[str, Any] | str) -> Any:
         entity_name = SchemaValidator.validate_entity(self._normalize_entity(entity))
-        self._enforce_rate_limit("delete", entity=entity_name)
+        self._enforce_rate_limit("delete", entity=entity_name, caller_id=self._current_caller_id())
         try:
             where = SchemaValidator.validate_find_where(where)
         except QueryError as exc:
@@ -270,7 +277,7 @@ class UDOM:
         *,
         sensitive_fields: set[str] | None,
     ) -> Any:
-        self._enforce_rate_limit("update", entity=entity_name)
+        self._enforce_rate_limit("update", entity=entity_name, caller_id=self._current_caller_id())
         payload = self._protect_sensitive_payload(payload, field_names=sensitive_fields)
         try:
             where = SchemaValidator.validate_find_where(where)
@@ -288,7 +295,7 @@ class UDOM:
 
     def count(self, entity: str, where: Mapping[str, Any] | str | None = None) -> int:
         entity_name = SchemaValidator.validate_entity(self._normalize_entity(entity))
-        self._enforce_rate_limit("count", entity=entity_name)
+        self._enforce_rate_limit("count", entity=entity_name, caller_id=self._current_caller_id())
         try:
             where = SchemaValidator.validate_find_where(where) if where is not None else None
         except QueryError as exc:
@@ -311,7 +318,7 @@ class UDOM:
         pipeline: list[Mapping[str, Any]] | None = None,
     ) -> Any:
         entity_name = SchemaValidator.validate_entity(self._normalize_entity(entity))
-        self._enforce_rate_limit("aggregate", entity=entity_name)
+        self._enforce_rate_limit("aggregate", entity=entity_name, caller_id=self._current_caller_id())
         try:
             where = SchemaValidator.validate_find_where(where) if where is not None else None
             having = SchemaValidator.validate_find_where(having) if having is not None else None
@@ -347,6 +354,8 @@ class UDOM:
     ) -> dict[str, Any]:
         if page <= 0:
             raise QueryError("page must be >= 1")
+        if page > self._MAX_PAGE:
+            raise QueryError(f"page number cannot exceed {self._MAX_PAGE}. Use cursor-based pagination for large offsets.")
         if page_size <= 0:
             raise QueryError("page_size must be >= 1")
         if page_size > 1000:
@@ -354,6 +363,8 @@ class UDOM:
         total = self.count(entity, where=where)
         limit = page_size
         offset = (page - 1) * page_size
+        if offset > 10_000_000:
+            raise QueryError("Requested offset too large. Use cursor-based pagination.")
         entity_name = SchemaValidator.validate_entity(self._normalize_entity(entity))
         if hasattr(self.adapter, "paginate"):
             items = self.adapter.paginate(
@@ -555,7 +566,7 @@ class UDOM:
             return "true" if value else "false"
         if isinstance(value, (int, float)):
             return str(value)
-        text = str(value).replace("'", "\\'")
+        text = re.sub(r"[\x00-\x1f\x7f]", "", str(value)).replace("'", "''")
         return f"'{text}'"
 
     def _to_uql_where(self, where: Mapping[str, Any] | str | None) -> str | None:
@@ -599,10 +610,13 @@ class UDOM:
             field_names=field_names,
         )
 
-    def _enforce_rate_limit(self, operation: str, *, entity: str) -> None:
-        if entity.lower() == self.settings.security_audit_entity.lower():
-            return
-        decision = self._rate_limiter.check(f"{operation}:{entity}")
+    def _current_caller_id(self) -> str:
+        return str(self.options.get("caller_id", "global")) or "global"
+
+    def _enforce_rate_limit(self, operation: str, *, entity: str, caller_id: str = "global") -> None:
+        if operation in {"create", "create_many", "update", "delete"} and entity.lower() == self.settings.security_audit_entity.lower():
+            raise QueryError("Direct writes to the security audit entity are not permitted")
+        decision = self._rate_limiter.check(f"{caller_id}:{operation}:{entity}")
         if decision.allowed:
             return
         error = QueryError("Rate limit exceeded")

@@ -119,7 +119,6 @@ Use `.env.example` as baseline for production environment variables.
 
 Important secure default:
 
-- `DBDUCK_ALLOW_UNSAFE_WHERE_STRINGS=false`
 
 ## 9. SQL Migrations
 

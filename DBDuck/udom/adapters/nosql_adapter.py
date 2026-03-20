@@ -14,7 +14,10 @@ from .base_adapter import BaseAdapter
 class NoSQLAdapter(BaseAdapter):
     """Adapter for NoSQL databases (MongoDB-style BSON format)."""
 
-    _DANGEROUS = re.compile(r"(?:--|/\*|\*/|;|\b(where|drop|truncate|union)\b)", re.IGNORECASE)
+    _DANGEROUS = re.compile(
+        r"(?:--|/\*|\*/|;|\$[a-zA-Z]|\b(where|drop|truncate|union|exec|eval|function)\b)",
+        re.IGNORECASE,
+    )
     _PUBLIC_QUERY_ERROR = "Database execution failed"
     _PUBLIC_CONNECTION_ERROR = "Database connection failed"
 
@@ -479,7 +482,7 @@ class NoSQLAdapter(BaseAdapter):
         if not condition:
             return {}
         condition = condition.strip()
-        if not self._allow_unsafe_where_strings and self._DANGEROUS.search(condition):
+        if self._DANGEROUS.search(condition):
             raise QueryError("Potential injection pattern detected in where condition")
 
         if re.search(r"\s+OR\s+", condition, flags=re.IGNORECASE):
@@ -539,11 +542,16 @@ class NoSQLAdapter(BaseAdapter):
         if (stripped.startswith("'") and stripped.endswith("'")) or (
             stripped.startswith('"') and stripped.endswith('"')
         ):
-            return stripped[1:-1]
+            stripped = stripped[1:-1]
+            if stripped.startswith("$"):
+                raise QueryError(f"Mongo operator expressions are not allowed as values: {stripped!r}")
+            return stripped
         if re.fullmatch(r"-?\d+", stripped):
             return int(stripped)
         if re.fullmatch(r"-?\d+\.\d+", stripped):
             return float(stripped)
+        if stripped.startswith("$"):
+            raise QueryError(f"Mongo operator expressions are not allowed as values: {stripped!r}")
         return stripped
 
     def _ensure_mongo(self):

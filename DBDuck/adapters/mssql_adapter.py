@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any, Mapping
 
+from sqlalchemy import text
+
 from ..core.exceptions import QueryError
 from ._sqlalchemy_adapter import SQLAlchemyAdapter
 
@@ -28,16 +30,17 @@ class MSSQLAdapter(SQLAlchemyAdapter):
         return "NVARCHAR(255)"
 
     def _ensure_table(self, entity: str, data: Mapping[str, Any]) -> None:
+        self._validate_identifier(entity)
         quoted_table = self._quote(entity)
         has_explicit_id = any(k.lower() == "id" for k in data)
         cols = [] if has_explicit_id else [self._pk_column_sql()]
         for key, value in data.items():
             cols.append(f"{self._quote(key)} {self._type_for_value(value)}")
-        safe_entity = entity.replace("'", "''")
-        sql = (
-            f"IF OBJECT_ID(N'{safe_entity}', N'U') IS NULL "
-            f"BEGIN CREATE TABLE {quoted_table} ({', '.join(cols)}) END"
-        )
+        check = text("SELECT OBJECT_ID(:tname, N'U') AS oid")
+        rows = self.run_native(check, params={"tname": entity})
+        if rows and rows[0].get("oid") is not None:
+            return
+        sql = f"CREATE TABLE {quoted_table} ({', '.join(cols)})"  # nosec B608
         self.run_native(sql)
 
     def _render_metric_sql(self, alias: str, metric: Any) -> str:
@@ -110,7 +113,7 @@ class MSSQLAdapter(SQLAlchemyAdapter):
     ) -> Any:
         return self._find_with_offset(entity, where=where, order_by=order_by, limit=limit, offset=offset)
 
-    def convert_uql(self, uql_query: str) -> str:
+    def convert_uql(self, uql_query: str) -> Any:
         uql = uql_query.strip()
         upper = uql.upper()
         if upper.startswith("FIND "):
@@ -126,13 +129,15 @@ class MSSQLAdapter(SQLAlchemyAdapter):
             order_by = match.group(3)
             limit = int(match.group(4)) if match.group(4) else None
             top_sql = f" TOP {limit}" if limit is not None else ""
-            sql = f"SELECT{top_sql} * FROM {self._quote(self._validate_identifier(entity))}"  # nosec B608
+            entity_name = self._validate_identifier(entity)
+            sql = f"SELECT{top_sql} * FROM {self._quote(entity_name)}"  # nosec B608
+            params: dict[str, Any] = {}
             if where:
-                safe_where = self._validate_uql_where_clause(where)
-                sql += f" WHERE {safe_where}"
+                where_sql, params = self._build_parameterized_where_from_string(entity_name, where)
+                sql += where_sql
             if order_by:
                 sql += f" ORDER BY {self._validate_order_by_clause(order_by)}"
-            return sql
+            return sql, params
         return super().convert_uql(uql_query)
 
     def aggregate(

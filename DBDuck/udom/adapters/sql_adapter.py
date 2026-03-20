@@ -3,6 +3,8 @@ import re
 from sqlalchemy import create_engine, text
 
 from .base_adapter import BaseAdapter
+from ...core.exceptions import QueryError
+from ...utils.logger import get_logger, log_internal_debug
 from .sql._legacy_sql_common import ParameterizedSQL, literal_to_uql, parameterize_condition, parse_literal_value
 
 
@@ -11,6 +13,13 @@ class SQLAdapter(BaseAdapter):
         self.url = url
         self.engine = create_engine(url)
         self.dialect = self.engine.url.get_backend_name().lower()
+        self._logger = get_logger()
+
+    @staticmethod
+    def _validate_identifier(name):
+        if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+            raise ValueError(f"Invalid SQL identifier: {name!r}")
+        return name
 
     def _quote(self, name):
         if self.dialect in {"mysql", "mariadb"}:
@@ -20,6 +29,8 @@ class SQLAdapter(BaseAdapter):
         return f'"{name}"'
 
     def _ensure_table(self, table_name, fields):
+        safe_table_name = self._validate_identifier(str(table_name))
+        has_explicit_id = any(str(name).lower() == "id" for name in fields)
         if self.dialect == "sqlite":
             pk = '"id" INTEGER PRIMARY KEY AUTOINCREMENT'
             text_type = "TEXT"
@@ -41,8 +52,9 @@ class SQLAdapter(BaseAdapter):
             text_type = "TEXT"
             bool_type = "TEXT"
 
-        cols = [pk]
+        cols = [] if has_explicit_id else [pk]
         for name, value in fields.items():
+            self._validate_identifier(str(name))
             value = value.strip().strip('"').strip("'")
             qname = self._quote(name)
             if value.lower() in {"true", "false"}:
@@ -55,14 +67,16 @@ class SQLAdapter(BaseAdapter):
                 cols.append(f"{qname} {text_type}")
 
         if self.dialect == "mssql":
+            check_stmt = text("SELECT OBJECT_ID(:tname, N'U') AS oid")
+            with self.engine.begin() as conn:
+                existing = conn.execute(check_stmt, {"tname": safe_table_name}).mappings().first()
+                if existing and existing.get("oid") is not None:
+                    return
             create_stmt = (
-                f"IF OBJECT_ID(N'{table_name}', N'U') IS NULL "
-                f"BEGIN CREATE TABLE {self._quote(table_name)} ({', '.join(cols)}); END;"
+                f"CREATE TABLE {self._quote(safe_table_name)} ({', '.join(cols)});"
             )
         else:
-            create_stmt = f"CREATE TABLE IF NOT EXISTS {self._quote(table_name)} ({', '.join(cols)});"
-
-        print(f"Ensuring table -> {create_stmt}")
+            create_stmt = f"CREATE TABLE IF NOT EXISTS {self._quote(safe_table_name)} ({', '.join(cols)});"
 
         with self.engine.begin() as conn:
             conn.execute(text(create_stmt))
@@ -78,7 +92,14 @@ class SQLAdapter(BaseAdapter):
                 except Exception:
                     return "Query executed successfully."
             except Exception as exc:
-                return f"SQL Error: {exc}"
+                log_internal_debug(
+                    self._logger,
+                    "Legacy SQLAdapter execution failed",
+                    event="query.error.internal",
+                    db=self.dialect,
+                    exc=exc,
+                )
+                raise QueryError("Database execution failed") from exc
 
     def convert_uql(self, uql):
         uql = uql.strip()
@@ -154,9 +175,10 @@ class SQLAdapter(BaseAdapter):
         return match.group(1) if match else None
 
     def create(self, entity, data):
-        fields = {str(k): str(v) for k, v in dict(data).items()}
+        entity_name = self._validate_identifier(str(entity))
+        fields = {self._validate_identifier(str(k)): self._literal_to_uql(v) for k, v in dict(data).items()}
         query = self.convert_uql(
-            "CREATE " + str(entity) + " {" + ", ".join(f"{key}: {value}" for key, value in fields.items()) + "}"
+            "CREATE " + entity_name + " {" + ", ".join(f"{key}: {value}" for key, value in fields.items()) + "}"
         )
         return self.run_native(query)
 
@@ -170,33 +192,47 @@ class SQLAdapter(BaseAdapter):
         return {"rows_affected": total}
 
     def find(self, entity, where=None, order_by=None, limit=None):
-        query = "FIND " + str(entity)
+        entity_name = self._validate_identifier(str(entity))
+        query = f"SELECT * FROM {self._quote(entity_name)}"  # nosec B608
+        params = {}
         if isinstance(where, dict) and where:
-            parts = [f"{key} = {self._literal_to_uql(value)}" for key, value in where.items()]
-            query += " WHERE " + " AND ".join(parts)
+            where_sql, params = self._parameterize_condition(
+                " AND ".join(f"{self._validate_identifier(str(key))} = {self._literal_to_uql(value)}" for key, value in where.items())
+            )
+            query += f" WHERE {where_sql}"
         elif isinstance(where, str) and where.strip():
-            query += " WHERE " + where.strip()
+            where_sql, params = self._parameterize_condition(where.strip())
+            query += f" WHERE {where_sql}"
         if order_by:
             query += " ORDER BY " + str(order_by)
         if limit is not None:
             query += " LIMIT " + str(limit)
-        return self.run_native(self.convert_uql(query))
+        return self.run_native(ParameterizedSQL(query + ";", params))
 
     def delete(self, entity, where):
-        query = "DELETE " + str(entity)
+        entity_name = self._validate_identifier(str(entity))
+        query = f"DELETE FROM {self._quote(entity_name)}"  # nosec B608
+        params = {}
         if isinstance(where, dict) and where:
-            parts = [f"{key} = {self._literal_to_uql(value)}" for key, value in where.items()]
-            query += " WHERE " + " AND ".join(parts)
+            where_sql, params = self._parameterize_condition(
+                " AND ".join(f"{self._validate_identifier(str(key))} = {self._literal_to_uql(value)}" for key, value in where.items())
+            )
+            query += f" WHERE {where_sql}"
         elif isinstance(where, str) and where.strip():
-            query += " WHERE " + where.strip()
-        return self.run_native(self.convert_uql(query))
+            where_sql, params = self._parameterize_condition(where.strip())
+            query += f" WHERE {where_sql}"
+        else:
+            raise QueryError("delete requires a non-empty where condition")
+        return self.run_native(ParameterizedSQL(query + ";", params))
 
     def update(self, entity, data, where):
+        entity_name = self._validate_identifier(str(entity))
         assignments = []
         params = {}
         for idx, (key, value) in enumerate(dict(data).items()):
+            field_name = self._validate_identifier(str(key))
             pname = f"u_{idx}"
-            assignments.append(f"{self._quote(key)} = :{pname}")
+            assignments.append(f"{self._quote(field_name)} = :{pname}")
             params[pname] = value
         where_sql = "1=1"
         where_params = {}
@@ -206,11 +242,12 @@ class SQLAdapter(BaseAdapter):
             )
         elif isinstance(where, str) and where.strip():
             where_sql, where_params = self._parameterize_condition(where.strip())
-        sql = f"UPDATE {self._quote(entity)} SET {', '.join(assignments)} WHERE {where_sql}"  # nosec B608
+        sql = f"UPDATE {self._quote(entity_name)} SET {', '.join(assignments)} WHERE {where_sql}"  # nosec B608
         params.update(where_params)
         return self.run_native(ParameterizedSQL(sql, params))
 
     def count(self, entity, where=None):
+        entity_name = self._validate_identifier(str(entity))
         params = {}
         where_sql = ""
         if isinstance(where, dict) and where:
@@ -219,7 +256,7 @@ class SQLAdapter(BaseAdapter):
             )
         elif isinstance(where, str) and where.strip():
             where_sql, params = self._parameterize_condition(where.strip())
-        sql = f"SELECT COUNT(*) AS total FROM {self._quote(entity)}"  # nosec B608
+        sql = f"SELECT COUNT(*) AS total FROM {self._quote(entity_name)}"  # nosec B608
         if where_sql:
             sql += f" WHERE {where_sql}"
         return self.run_native(ParameterizedSQL(sql, params))
