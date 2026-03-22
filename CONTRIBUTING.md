@@ -5,4 +5,5 @@
 3. Run `pytest -q` and `python -m bandit -q -r DBDuck` before opening a pull request.
 4. Keep public UDOM APIs backward compatible.
 5. Add or update tests for every behavioral change.
+Thank You for Contributing
 
