@@ -221,10 +221,6 @@ venv\Scripts\activate      # Windows
 
 ```bash
 pip install -r requirements.txt
-
-(Note: The testing framework is not included in the main requirements file to keep production dependencies light. If you plan on running tests, please install it manually:)
-
-
 pip install pytest
 ```
 
