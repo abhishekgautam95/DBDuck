@@ -119,7 +119,8 @@ def run_mysql_example():
     
     try:
         # Connect to MySQL (adjust credentials as needed)
-        db = UDOM(url="mysql+pymysql://root:Veeru123@localhost:3306/dbduck_test")
+        # Replace with your actual MySQL credentials
+        db = UDOM(url="mysql+pymysql://root:YourPassword@localhost:3306/dbduck_test")
         db.ping()
     except Exception as e:
         print(f"MySQL not available: {e}")
@@ -181,7 +182,8 @@ def run_postgresql_example():
     
     try:
         # Connect to PostgreSQL (adjust credentials as needed)
-        db = UDOM(url="postgresql+psycopg2://postgres:Veeru123@localhost:5432/dbduck_test")
+        # Replace with your actual PostgreSQL credentials
+        db = UDOM(url="postgresql+psycopg2://postgres:YourPassword@localhost:5432/dbduck_test")
         db.ping()
     except Exception as e:
         print(f"PostgreSQL not available: {e}")

@@ -100,7 +100,8 @@ class Author(UModel):
     
     id = Column(IntegerField, primary_key=True)
     name = Column(CharField, nullable=False)
-    books = OneToMany("Book", back_populates="author")
+    # One author has many books - use foreign_key parameter (not back_populates)
+    books = OneToMany("Book", foreign_key="author_id")
 
 class Book(UModel):
     __entity__ = "books"
