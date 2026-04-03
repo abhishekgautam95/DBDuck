@@ -6,7 +6,7 @@ This folder contains examples demonstrating the Query Builder DSL introduced in 
 
 | File | Description |
 |------|-------------|
-| `example_sql_query_builder.py` | Basic Query Builder with SQLite (recommended starting point) |
+| `example_sql_query_builder.py` | Basic Query Builder with SQLite |
 | `example_sql_joins.py` | SQL join examples with inner join and left join |
 | `example_umodel_query_builder.py` | UModel with Django-style column definitions |
 | `example_all_backends.py` | Query Builder across SQL, MongoDB, Neo4j, Qdrant |
@@ -37,10 +37,7 @@ python example_all_backends.py
 
 ## Query Builder API
 
-### Basic API (returns dicts) - Recommended
-
-The recommended way to use QueryBuilder is via `db.table()`:
-
+### Basic API (returns dicts)
 ```python
 from DBDuck import UDOM
 
@@ -53,21 +50,7 @@ results = db.table("users") \
     .find()
 ```
 
-### Direct Instantiation (Advanced)
-
-For advanced scenarios, you can instantiate QueryBuilder directly:
-
-```python
-from DBDuck import UDOM
-from DBDuck.udom.query_builder import QueryBuilder
-
-db = UDOM(url="sqlite:///:memory:")
-qb = QueryBuilder(db, "users")
-results = qb.where(active=True).find()
-```
-
 ### UModel API (returns typed instances)
-
 ```python
 from DBDuck.models import (
     CharField, IntegerField, BooleanField,
