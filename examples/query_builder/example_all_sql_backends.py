@@ -248,10 +248,11 @@ def run_mssql_example():
     print("=" * 60)
     odbc_str = (
         "DRIVER={ODBC Driver 17 for SQL Server};"
-        "SERVER=VEERESH-HANNI\MSSQLLEARNDB"
+        "SERVER=localhost\\MSSQLSERVER"
+        # Note: This is a sample connection string - adjust for your environment
         "DATABASE=dbduck_test;"
         "UID=sa;"
-        "PWD=Veeru2006;"
+        "PWD=YourPassword;"
         "TrustServerCertificate=yes;"
     )
     url = f"mssql+pyodbc:///?odbc_connect={quote_plus(odbc_str)}"

@@ -37,7 +37,8 @@ class Author(UModel):
     active = Column(BooleanField, default=True)
     
     # One author has many books
-    books = OneToMany("Book", back_populates="author")
+    # Note: OneToMany requires explicit foreign_key parameter
+    books = OneToMany("Book", foreign_key="author_id")
 
 
 class Publisher(UModel):
