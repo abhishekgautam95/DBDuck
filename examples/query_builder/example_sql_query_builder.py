@@ -5,11 +5,12 @@ Demonstrates the fluent Query Builder API with SQLite database.
 No external dependencies required - uses in-memory SQLite.
 
 Two ways to use QueryBuilder:
-1. Via db.table() - recommended for most cases
-2. Direct instantiation - useful for advanced scenarios
+1. Via db.table() - recommended for most cases (simpler, cleaner)
+2. Direct instantiation - useful for advanced scenarios or when you need
+   to pass QueryBuilder instances around without a UDOM reference
 """
 
-from DBDuck import UDOM
+from DBDuck import UDOM, QueryBuilder
 
 # Create in-memory SQLite database
 db = UDOM(url="sqlite:///:memory:")
@@ -177,7 +178,7 @@ state = query.to_dict()
 print(f"Query state: {state}")
 
 # Direct QueryBuilder instantiation (advanced usage)
-from DBDuck.udom.query_builder import QueryBuilder
+# Note: QueryBuilder is already imported at the top of this file
 direct_qb = QueryBuilder(db, "users")
 direct_result = direct_qb.where(active=1).limit(2).find()
 print(f"Direct QueryBuilder result: {len(direct_result)} users\n")

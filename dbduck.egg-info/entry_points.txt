@@ -1,0 +1,2 @@
+[console_scripts]
+dbduck = DBDuck.cli.main:app
