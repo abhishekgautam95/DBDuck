@@ -3,9 +3,13 @@ Query Builder DSL Example - SQL (SQLite)
 
 Demonstrates the fluent Query Builder API with SQLite database.
 No external dependencies required - uses in-memory SQLite.
+
+Two ways to use QueryBuilder:
+1. Via db.table() - recommended for most cases
+2. Direct instantiation - useful for advanced scenarios
 """
 
-from DBDuck import UDOM, QueryBuilder
+from DBDuck import UDOM
 
 # Create in-memory SQLite database
 db = UDOM(url="sqlite:///:memory:")
@@ -171,6 +175,12 @@ print("\n=== Query Introspection ===")
 query = db.table("users").where(active=1).order("name").limit(10)
 state = query.to_dict()
 print(f"Query state: {state}")
+
+# Direct QueryBuilder instantiation (advanced usage)
+from DBDuck.udom.query_builder import QueryBuilder
+direct_qb = QueryBuilder(db, "users")
+direct_result = direct_qb.where(active=1).limit(2).find()
+print(f"Direct QueryBuilder result: {len(direct_result)} users\n")
 
 print("\n" + "=" * 50)
 print("All Query Builder examples completed successfully!")
